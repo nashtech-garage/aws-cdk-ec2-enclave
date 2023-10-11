@@ -4,8 +4,6 @@ import { aws_ec2 as ec2, aws_iam as iam } from 'aws-cdk-lib';
 import { readFileSync } from 'fs';
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
 
-
-
 export class ConfidentialComputingStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
