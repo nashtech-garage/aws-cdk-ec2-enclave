@@ -47,7 +47,7 @@ export class ConfidentialComputingStack extends cdk.Stack {
       'Allow HTTPS Traffic from any where'
     );
 
-    const cfnInstance = new ec2.CfnInstance(this, 'MyCfnInstance', /* all optional props */ {
+    const cfnInstance = new ec2.CfnInstance(this, 'confidential_computing_ec2', /* all optional props */ {
       disableApiTermination: false,
       enclaveOptions: {
         enabled: true,
