@@ -47,6 +47,38 @@ export class ConfidentialComputingStack extends cdk.Stack {
       'Allow HTTPS Traffic from any where'
     );
 
+    // Policy Document
+    const kmsEc2Policy = new iam.PolicyDocument({
+      statements: [
+        new iam.PolicyStatement({
+          actions: [
+            "kms:Encrypt",
+            "kms:Decrypt",
+            "kms:ReEncrypt*",
+            "kms:GenerateDataKey*",
+            "kms:DescribeKey"
+          ],
+          resources: ['*']
+        })
+      ]
+    });
+
+    // Create Role
+    const web_server_role = new iam.Role(this, 'confidential_computing_role', {
+      assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+      inlinePolicies: {
+        kmsEc2Policy
+      }
+      // managedPolicies: [
+      //   iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3ReadOnlyAccess'),
+      // ],
+    });
+
+    const iamCfnInstanceProfile = new iam.CfnInstanceProfile(this, 'confidential_instance_profile', {
+      roles: [web_server_role.roleName],
+      instanceProfileName: 'confidential-instance-profile'
+    });
+    
     const cfnInstance = new ec2.CfnInstance(this, 'confidential_computing_ec2', /* all optional props */ {
       disableApiTermination: false,
       enclaveOptions: {
@@ -59,6 +91,24 @@ export class ConfidentialComputingStack extends cdk.Stack {
       subnetId: vpc.publicSubnets[0].subnetId,
       userData,
       securityGroupIds: [security_group.securityGroupId],
+      iamInstanceProfile: iamCfnInstanceProfile.instanceProfileName,
+    });
+
+    const ec2_instance = new ec2.Instance(this, 'tiny_ec2', {
+      vpc,
+      vpcSubnets: {
+        subnetType: ec2.SubnetType.PUBLIC,
+      },
+      role: web_server_role,
+      securityGroup: security_group,
+      instanceType: ec2.InstanceType.of(
+        ec2.InstanceClass.T2,
+        ec2.InstanceSize.MICRO,
+      ),
+      machineImage: new ec2.AmazonLinuxImage({
+        generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+      }),
+      keyName: 'confidential-ec2-key-pair',
     });
 
     // The code that defines your stack goes here
