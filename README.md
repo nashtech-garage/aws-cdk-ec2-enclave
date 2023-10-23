@@ -51,7 +51,7 @@ We should use L2 constructs for ease. But in L2, we currently don't have an `enc
 
 ![Login to AWS Account](images/aws_sso_login.png)
 
-- Generate AWS CloudFormation template
+- (Optional) Generate AWS CloudFormation template (That will auto run when we deploy)
 > cdk synth
 
 ![Generate AWS CloudFormation Template](images/cdk_synth.png)
@@ -70,20 +70,78 @@ EC2 Instance
 
 ![Using SSH Command](images/ssh_command_to_connect.png)
 
-- Run following command to build enclave
+- Check log to make sure we finish building process
 ```
-nitro-cli build-enclave --docker-uri hello:latest --output-file hello.eif
-
-nitro-cli run-enclave --cpu-count 2 --memory 512 --enclave-cid 16 --eif-path hello.eif --debug-mode
-
+sudo su
+cd /var/log
+tail -n100 cloud-init-output.log
 ```
+![Cloud build success](images/cloud-build-success.png)
 
-![Enclave Detail](images/enclave_cid.png)
+- Set configure to run specific region
+```
+aws configure
+```
+![AWS Configure Region](images/aws-configure-region.png)
+
+- Run command to check enclaves
+```
+nitro-cli describe-enclaves
+```
+![Describe Enclaves](images/describe-enclaves.png)
 
 - Check result from console
 > nitro-cli console --enclave-id i-0a8b0095e465ce702-enc18b1d5e61c374bf
 
 ![Enclave console](images/enclave_console.png)
+
+
+## Test with encrypt & decrypt KMS
+
+- After run sucess, checking the EC2 to get information
+![EC2 information](images/ec2-information.png)
+
+- We can see role of EC2
+![Confidential Computing Role](images/confidential_coputing-role.png)
+
+
+- We need to create an KMS key with Key Usage: "Encrypt and decrypt", and set policy to allow EC2 role encrypt data. With Decrypt function, we only allow in Enclave (In debug mode, we need to set "000...0". But in production mode, we need to set PCR0 value)
+![KMS Policy](images/kms-policy.png)
+
+
+- SSH to confidentail computing EC2. Run command to encrypt data
+```
+KMS_KEY_ARN="alias/kms-for-enclave-testing"
+MESSAGE="Hello everyone"
+CIPHERTEXT=$(aws kms encrypt --key-id "$KMS_KEY_ARN" --plaintext "$MESSAGE" --query CiphertextBlob --output text)
+echo $CIPHERTEXT
+```
+![KMS Encrypt Data](images/kms-encrypt.png)
+
+- Run command to decrypt data, we will get AccessDeniedException
+```
+aws kms decrypt --ciphertext-blob fileb://<(echo $CIPHERTEXT | base64 -d) --key-id "$KMS_KEY_ARN"
+```
+![KMS Decrypt Data](images/kms-decrypt.png)
+
+## Open vsock and test with enclave
+Now, we open another terminal, connect to Confidentail Computing EC2 again
+Run vsock command to connect to kms service
+```
+CMK_REGION=us-east-1 # The region where you created your AWS KMS CMK
+vsock-proxy 8000 kms.$CMK_REGION.amazonaws.com 443
+```
+![Open vsock proxy](images/vsockproxy-command.png)
+
+- Call to kmstool-instance
+```
+CMK_REGION=us-east-1 # Must match above
+ENCLAVE_CID=$(nitro-cli describe-enclaves | jq -r .[0].EnclaveCID)
+# Run docker with network host to allow it to fetch IAM credentials with IMDSv2
+docker run --network host -it kmstool-instance /kmstool_instance --cid "$ENCLAVE_CID" --region "$CMK_REGION" "$CIPHERTEXT"
+```
+
+![Decypt by enclave](images/decrypt-by-enclave.png)
 
 - (Optional) Destroy all AWS Resources after testing
 > cdk destroy
