@@ -2,6 +2,8 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { aws_ec2 as ec2, aws_iam as iam } from 'aws-cdk-lib';
 import { readFileSync } from 'fs';
+import { CfnTag } from 'aws-cdk-lib/aws-lakeformation';
+import { Key } from 'aws-cdk-lib/aws-kms';
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
 
 export class ConfidentialComputingStack extends cdk.Stack {
@@ -21,7 +23,7 @@ export class ConfidentialComputingStack extends cdk.Stack {
     });
 
     let userData = readFileSync('./lib/user-data.sh', 'utf-8');
-    userData = this.base64_encode(userData);
+    userData = this.base64_encode(userData);    
     
     // Security Group
     const security_group = new ec2.SecurityGroup(this, 'confidential_computing_sg', {
@@ -47,28 +49,30 @@ export class ConfidentialComputingStack extends cdk.Stack {
       'Allow HTTPS Traffic from any where'
     );
 
-    // Policy Document
-    const kmsEc2Policy = new iam.PolicyDocument({
-      statements: [
-        new iam.PolicyStatement({
-          actions: [
-            "kms:Encrypt",
-            "kms:Decrypt",
-            "kms:ReEncrypt*",
-            "kms:GenerateDataKey*",
-            "kms:DescribeKey"
-          ],
-          resources: ['*']
-        })
-      ]
-    });
+    //// Policy Document
+    // const kmsEc2Policy = new iam.PolicyDocument({
+    //   statements: [
+    //     new iam.PolicyStatement({
+    //       actions: [
+    //         "kms:Encrypt",
+    //         "kms:Decrypt",
+    //         "kms:ReEncrypt*",
+    //         "kms:GenerateDataKey*",
+    //         "kms:DescribeKey"
+    //       ],
+    //       resources: ['*']
+    //     })
+    //   ]
+    // });
 
     // Create Role
+    // Role don't need any policy, we will set policy in KMS to allow this role encrypt
     const web_server_role = new iam.Role(this, 'confidential_computing_role', {
       assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
-      inlinePolicies: {
+      roleName: 'confidential_computing_role',
+      /*inlinePolicies: {
         kmsEc2Policy
-      }
+      }*/
       // managedPolicies: [
       //   iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3ReadOnlyAccess'),
       // ],
@@ -91,7 +95,7 @@ export class ConfidentialComputingStack extends cdk.Stack {
       subnetId: vpc.publicSubnets[0].subnetId,
       userData,
       securityGroupIds: [security_group.securityGroupId],
-      iamInstanceProfile: iamCfnInstanceProfile.instanceProfileName,
+      iamInstanceProfile: iamCfnInstanceProfile.instanceProfileName
     });
 
     const ec2_instance = new ec2.Instance(this, 'tiny_ec2', {
